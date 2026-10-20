@@ -3,10 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MAX_EXPRESSION_LENGTH, tryEvaluateExpression } from "@/lib/calculator";
 
+type AngleUnit = "degrees" | "radians";
+
 interface HistoryEntry {
   id: number;
   expression: string;
   result: string;
+  /** Set when the expression used trigonometry, so the unit matters. */
+  angleUnit?: AngleUnit;
 }
 
 type KeyKind = "digit" | "operator" | "function" | "action" | "equals";
@@ -50,6 +54,33 @@ const KEYS: KeyDef[] = [
   { label: "=", value: "equals", kind: "equals", aria: "Equals", span: 2 },
 ];
 
+/** Scientific keys, shown above the main keypad. "angle" toggles DEG/RAD. */
+const SCI_KEYS: KeyDef[] = [
+  { label: "DEG", value: "angle", kind: "action", aria: "Toggle degrees or radians" },
+  { label: "sin", value: "sin(", kind: "function", aria: "Sine" },
+  { label: "cos", value: "cos(", kind: "function", aria: "Cosine" },
+  { label: "tan", value: "tan(", kind: "function", aria: "Tangent" },
+  { label: "π", value: "pi", kind: "function", aria: "Pi" },
+
+  { label: "sin⁻¹", value: "asin(", kind: "function", aria: "Inverse sine" },
+  { label: "cos⁻¹", value: "acos(", kind: "function", aria: "Inverse cosine" },
+  { label: "tan⁻¹", value: "atan(", kind: "function", aria: "Inverse tangent" },
+  { label: "e", value: "e", kind: "function", aria: "Euler number" },
+  { label: "n!", value: "!", kind: "function", aria: "Factorial" },
+
+  { label: "ln", value: "ln(", kind: "function", aria: "Natural logarithm" },
+  { label: "log", value: "log(", kind: "function", aria: "Logarithm base 10, or log(x, base)" },
+  { label: "eˣ", value: "exp(", kind: "function", aria: "e to the power of" },
+  { label: "10ˣ", value: "10^", kind: "function", aria: "10 to the power of" },
+  { label: "x²", value: "^2", kind: "function", aria: "Square" },
+
+  { label: "∛", value: "cbrt(", kind: "function", aria: "Cube root" },
+  { label: "ʸ√x", value: "root(", kind: "function", aria: "Nth root: root(x, n)" },
+  { label: "|x|", value: "abs(", kind: "function", aria: "Absolute value" },
+  { label: "nCr", value: "nCr(", kind: "function", aria: "Combinations: nCr(n, r)" },
+  { label: ",", value: ",", kind: "function", aria: "Argument separator" },
+];
+
 const KEY_STYLES: Record<KeyKind, string> = {
   digit: "bg-slate-800/80 text-slate-100 hover:bg-slate-700 active:bg-slate-600",
   function: "bg-slate-700/60 text-sky-200 hover:bg-slate-600/80 active:bg-slate-500",
@@ -60,10 +91,20 @@ const KEY_STYLES: Record<KeyKind, string> = {
 
 /** Pretty-prints an ASCII expression for display. */
 export function prettyExpression(expr: string): string {
-  return expr.replace(/sqrt/g, "√").replace(/\*/g, "×").replace(/\//g, "÷").replace(/-/g, "−");
+  return expr
+    .replace(/sqrt/g, "√")
+    .replace(/cbrt/g, "∛")
+    .replace(/\bpi\b/g, "π")
+    .replace(/\*/g, "×")
+    .replace(/\//g, "÷")
+    .replace(/-/g, "−");
 }
 
-const OPERATOR_START = /^[+*/%^]/;
+/** Keys that continue from the previous result instead of starting a new expression. */
+const OPERATOR_START = /^[+*/%^!,]/;
+/** A trailing function name with its "(" (e.g. "asin(") or a constant, removed as one unit by backspace. */
+const TRAILING_NAME = /(?:[a-zA-Z][a-zA-Z0-9]*\(|pi)$/;
+const USES_ANGLES = /\b(?:a?(?:sin|cos|tan)|arc(?:sin|cos|tan))\(/i;
 
 interface CalculatorProps {
   onAskAi?: (expression: string) => void;
@@ -75,12 +116,13 @@ export function Calculator({ onAskAi }: CalculatorProps) {
   const [error, setError] = useState<string | null>(null);
   const [lastEvaluated, setLastEvaluated] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [angleUnit, setAngleUnit] = useState<AngleUnit>("degrees");
 
   const preview = useMemo(() => {
     if (!expr || justEvaluated || /^[+-]?[\d.]+(e[+-]?\d+)?$/i.test(expr)) return null;
-    const outcome = tryEvaluateExpression(expr);
+    const outcome = tryEvaluateExpression(expr, { angleUnit });
     return outcome.ok ? outcome.value.result : null;
-  }, [expr, justEvaluated]);
+  }, [expr, justEvaluated, angleUnit]);
 
   const input = useCallback(
     (value: string) => {
@@ -106,27 +148,32 @@ export function Calculator({ onAskAi }: CalculatorProps) {
   const backspace = useCallback(() => {
     setError(null);
     setJustEvaluated(false);
-    setExpr((current) => (current.endsWith("sqrt(") ? current.slice(0, -5) : current.slice(0, -1)));
+    setExpr((current) => {
+      const name = TRAILING_NAME.exec(current);
+      return name ? current.slice(0, -name[0].length) : current.slice(0, -1);
+    });
   }, []);
 
   const equals = useCallback(() => {
     if (!expr.trim()) return;
-    const outcome = tryEvaluateExpression(expr);
+    const outcome = tryEvaluateExpression(expr, { angleUnit });
     if (!outcome.ok) {
       setError(outcome.error.message);
       return;
     }
-    const { result } = outcome.value;
-    setHistory((h) => [{ id: Date.now() + Math.random(), expression: expr, result }, ...h].slice(0, 50));
+    const { result, usesAngles } = outcome.value;
+    const entry: HistoryEntry = { id: Date.now() + Math.random(), expression: expr, result, ...(usesAngles ? { angleUnit } : {}) };
+    setHistory((h) => [entry, ...h].slice(0, 50));
     setLastEvaluated(expr);
     setExpr(result);
     setJustEvaluated(true);
     setError(null);
-  }, [expr]);
+  }, [expr, angleUnit]);
 
   const press = useCallback(
     (key: KeyDef) => {
-      if (key.value === "clear") clear();
+      if (key.value === "angle") setAngleUnit((u) => (u === "degrees" ? "radians" : "degrees"));
+      else if (key.value === "clear") clear();
       else if (key.value === "backspace") backspace();
       else if (key.value === "equals") equals();
       else input(key.value);
@@ -144,7 +191,7 @@ export function Calculator({ onAskAi }: CalculatorProps) {
       if (target?.tagName === "BUTTON" && (event.key === "Enter" || event.key === " ")) return;
 
       const k = event.key;
-      if (/^[0-9.]$/.test(k) || "+-*/%^()".includes(k)) input(k);
+      if (/^[0-9.]$/.test(k) || "+-*/%^()!,".includes(k)) input(k);
       else if (k === "x" || k === "X") input("*");
       else if (k === "s" || k === "S") input("sqrt(");
       else if (k === "Enter" || k === "=") equals();
@@ -189,6 +236,29 @@ export function Calculator({ onAskAi }: CalculatorProps) {
         </div>
       </div>
 
+      {/* Scientific keys */}
+      <div className="grid grid-cols-5 gap-1.5" role="group" aria-label="Scientific functions">
+        {SCI_KEYS.map((key) => {
+          const isAngle = key.value === "angle";
+          return (
+            <button
+              key={key.label}
+              type="button"
+              aria-label={isAngle ? `Angle unit: ${angleUnit}. Click to switch.` : key.aria}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => press(key)}
+              className={`h-10 rounded-lg text-sm font-medium transition-colors select-none ${
+                isAngle
+                  ? "bg-amber-500/15 text-amber-300 ring-1 ring-inset ring-amber-400/30 hover:bg-amber-500/25"
+                  : KEY_STYLES[key.kind]
+              }`}
+            >
+              {isAngle ? (angleUnit === "degrees" ? "DEG" : "RAD") : key.label}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Keypad */}
       <div className="grid grid-cols-5 gap-2" role="group" aria-label="Calculator keypad">
         {KEYS.map((key) => (
@@ -209,11 +279,14 @@ export function Calculator({ onAskAi }: CalculatorProps) {
       </div>
 
       <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
-        <span>Keyboard: 0-9 . + − × ÷ ^ % ( ) · s = √ · Enter = · Esc clear</span>
+        <span>Keyboard: 0-9 . + − × ÷ ^ % ! , ( ) · s = √ · Enter = · Esc clear</span>
         {onAskAi && (
           <button
             type="button"
-            onClick={() => expr.trim() && onAskAi(justEvaluated && lastEvaluated ? lastEvaluated : expr)}
+            onClick={() => {
+              const target = justEvaluated && lastEvaluated ? lastEvaluated : expr;
+              if (target.trim()) onAskAi(USES_ANGLES.test(target) ? `${target} (angles in ${angleUnit})` : target);
+            }}
             disabled={!expr.trim()}
             className="shrink-0 rounded-lg px-2 py-1 text-sky-300 hover:bg-sky-500/10 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -249,7 +322,12 @@ export function Calculator({ onAskAi }: CalculatorProps) {
                   className="flex w-full items-baseline justify-between gap-3 px-4 py-1.5 text-left font-mono text-sm hover:bg-slate-800/60"
                   title="Use this result"
                 >
-                  <span className="truncate text-slate-400">{prettyExpression(entry.expression)}</span>
+                  <span className="truncate text-slate-400">
+                    {prettyExpression(entry.expression)}
+                    {entry.angleUnit && (
+                      <span className="ml-1.5 text-[10px] uppercase text-amber-400/70">{entry.angleUnit === "degrees" ? "deg" : "rad"}</span>
+                    )}
+                  </span>
                   <span className="shrink-0 text-slate-100">= {entry.result}</span>
                 </button>
               </li>

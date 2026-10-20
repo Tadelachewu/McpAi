@@ -10,7 +10,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createCalculatorServer } from "../../mcp-server/server";
 import { connectCalculatorMcp, type CalculatorMcpClient } from "@/lib/server/mcp-client";
 
-const EXPECTED_TOOLS = ["add", "calculate_expression", "divide", "multiply", "percentage", "power", "square_root", "subtract"];
+const EXPECTED_TOOLS = ["add", "calculate_expression", "divide", "factorial", "logarithm", "multiply", "percentage", "power", "square_root", "subtract", "trigonometry"];
 
 describe("MCP server over in-memory transport", () => {
   let client: Client;

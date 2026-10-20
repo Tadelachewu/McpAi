@@ -56,7 +56,7 @@ describe("evaluateExpression: arithmetic", () => {
 
   it("returns a normalized expression and numeric value", () => {
     const r = evaluateExpression("(100+50)*4");
-    expect(r).toEqual({ expression: "(100 + 50) * 4", result: "600", value: 600 });
+    expect(r).toEqual({ expression: "(100 + 50) * 4", result: "600", value: 600, usesAngles: false });
   });
 
   it("formats very large and very small numbers", () => {
@@ -86,12 +86,16 @@ describe("evaluateExpression: errors", () => {
     ["2(3)", "UNEXPECTED_TOKEN"],
     ["1.2.3", "INVALID_NUMBER"],
     ["5e", "INVALID_NUMBER"],
+    ["1,000", "UNEXPECTED_TOKEN"],
+    ["sin 30", "UNEXPECTED_TOKEN"],
+    ["log(1, 2, 3)", "UNEXPECTED_TOKEN"],
+    ["2pi", "UNEXPECTED_TOKEN"],
     ["sqrt 4", "UNEXPECTED_TOKEN"],
   ] as const)("rejects %j (%s)", (expr, code) => {
     expectError(expr, code);
   });
 
-  it.each(["alert(1)", "process.exit()", "2 + x", "Math.PI", "1; 2", "2 & 3", "constructor", "0x10", "1,000"])(
+  it.each(["alert(1)", "process.exit()", "2 + x", "Math.PI", "1; 2", "2 & 3", "constructor", "0x10", "toString(1)", "__proto__"])(
     "rejects unsupported tokens in %j",
     (expr) => {
       expectError(expr, "INVALID_CHARACTER");

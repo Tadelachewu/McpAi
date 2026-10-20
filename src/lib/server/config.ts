@@ -14,6 +14,12 @@ const ConfigSchema = z.object({
   OLLAMA_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(600_000).default(180_000),
   OLLAMA_THINK: boolFromEnv.default(false),
   OLLAMA_KEEP_ALIVE: z.string().max(20).default("10m"),
+  /** When set, OpenRouter is used instead of the local Ollama model. Secret: never logged or sent to the browser. */
+  OPENROUTER_API_KEY: z.string().min(1).max(500).optional(),
+  OPENROUTER_BASE_URL: z.url({ protocol: /^https?$/ }).default("https://openrouter.ai/api/v1"),
+  OPENROUTER_MODEL: z.string().min(1).max(200).default("google/gemma-4-31b-it:free"),
+  OPENROUTER_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(600_000).default(120_000),
+  OPENROUTER_REASONING: boolFromEnv.default(true),
   MAX_TOOL_ITERATIONS: z.coerce.number().int().min(1).max(10).default(5),
   MAX_TOOL_CALLS_PER_TURN: z.coerce.number().int().min(1).max(10).default(4),
   MCP_TOOL_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(10_000),
@@ -23,6 +29,13 @@ const ConfigSchema = z.object({
 });
 
 export type AppConfig = z.infer<typeof ConfigSchema>;
+
+export type AiProvider = "ollama" | "openrouter";
+
+/** OpenRouter when an API key is configured, otherwise the local Ollama model. */
+export function getAiProvider(config: AppConfig): AiProvider {
+  return config.OPENROUTER_API_KEY?.trim() ? "openrouter" : "ollama";
+}
 
 let cached: AppConfig | undefined;
 

@@ -32,6 +32,8 @@ export interface OllamaMessage {
   tool_calls?: OllamaToolCall[];
   tool_name?: string;
   tool_call_id?: string;
+  /** Provider reasoning blocks (OpenRouter), passed back to the model unmodified. */
+  reasoning_details?: unknown;
 }
 
 export interface OllamaTool {
@@ -42,6 +44,7 @@ export interface OllamaTool {
 export interface ChatTurn {
   content: string;
   toolCalls: OllamaToolCall[];
+  reasoningDetails?: unknown;
 }
 
 export interface ChatParams {

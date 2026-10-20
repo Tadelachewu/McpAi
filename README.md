@@ -1,6 +1,6 @@
-# AI Calculator: Next.js + Ollama (qwen3:8b) + MCP
+# AI Scientific Calculator: Next.js + Ollama (qwen3:8b) / OpenRouter + MCP
 
-A calculator web app with a normal keypad and an AI chat assistant. The assistant runs on your **local**
+A scientific calculator web app with a keypad (trigonometry, logarithms, powers, roots, factorial, combinatorics, DEG/RAD) and an AI chat assistant. The assistant runs on your **local**
 Ollama `qwen3:8b` model. It never does arithmetic itself: it calls calculator tools, and the server runs
 those tools through a **real MCP client** connected to a **separate MCP server process** (official
 `@modelcontextprotocol/sdk`, stdio transport).
@@ -21,7 +21,7 @@ Next.js server (Node runtime, 127.0.0.1 only)
          │ spawns automatically on first use, stdio JSON-RPC
          ▼
      MCP calculator server (mcp-server/, separate Node process)
-         └─ 8 tools, Zod input/output schemas, pure calculator code (no shell, files or network)
+         └─ 11 tools, Zod input/output schemas, pure calculator code (no shell, files or network)
 
 Shared, dependency-free calculator engine (src/lib/calculator/) is used by both the keypad (in the browser)
 and the MCP tools. There are no circular dependencies: the engine imports nothing from the app or the server.
@@ -68,12 +68,30 @@ tests/
 
 | Tool | Arguments | Notes |
 |---|---|---|
-| `calculate_expression` | `expression: string` (1–500 chars) | `+ - * / % ^ ( )`, unary minus, decimals, `1e5`, `sqrt(x)`. `%` is **modulo** here. |
+| `calculate_expression` | `expression: string` (1–500 chars), `angle_unit?: "degrees" \| "radians"` (default degrees) | `+ - * / % ^ ! ( ) ,`, unary minus, decimals, `1e5`, constants and all functions below. `%` is **modulo** here. |
 | `add` / `subtract` / `multiply` | `a: number, b: number` | |
 | `divide` | `a: number, b: number` | `b = 0` → error |
 | `percentage` | `value: number, percent: number` | `percentage(800, 15)` = 120 ("15% of 800") |
 | `power` | `base: number, exponent: number` | \|exponent\| ≤ 10000; a negative base needs an integer exponent |
 | `square_root` | `value: number` | negative → error (no complex numbers) |
+| `trigonometry` | `function: sin\|cos\|tan\|asin\|acos\|atan\|sinh\|cosh\|tanh\|asinh\|acosh\|atanh`, `value: number`, `angle_unit?` (default degrees) | Exact 0/±1 at multiples of 90°; `tan(90°)` → error |
+| `logarithm` | `value: number`, `base?: number \| "e"` (default 10) | `base: "e"` = natural log |
+| `factorial` | `n: number` | whole number 0–170 |
+
+### Expression functions and constants
+
+| | |
+|---|---|
+| Constants | `pi` (`π`), `e` |
+| Trigonometry | `sin cos tan asin acos atan` (aliases `arcsin arccos arctan`); unit = DEG/RAD toggle on the keypad, `angle_unit` for the AI |
+| Hyperbolic | `sinh cosh tanh asinh acosh atanh` |
+| Logs / exponentials | `ln(x)`, `log(x)` (base 10, alias `log10`), `log(x, base)`, `log2(x)`, `exp(x)` |
+| Roots / powers | `sqrt(x)` (`√`), `cbrt(x)` (`∛`), `root(x, n)`, `x^y` |
+| Rounding | `abs floor ceil round` (round half away from zero) |
+| Combinatorics | `n!`, `nCr(n, r)`, `nPr(n, r)` |
+
+Names are case-insensitive and resolved from a fixed table. Functions need parentheses (`sin(30)`, not `sin 30`),
+and `,` only separates function arguments.
 
 Every tool returns a text result (`"15% of 800 = 120"`) **and** `structuredContent`
 `{ operation, expression, result, value }` validated against an `outputSchema`. Errors are returned as
@@ -97,6 +115,20 @@ Open **http://127.0.0.1:3000** (http://localhost:3000 also works).
 as a child process over stdio on the first request, reconnects if it dies, and it exits when Next.js
 stops. Ollama has to be running already (the Ollama tray app or `ollama serve`).
 
+### Optional: use OpenRouter instead of Ollama
+
+Put an OpenRouter API key in `.env.local` and restart `npm run dev`:
+
+```
+OPENROUTER_API_KEY=sk-or-v1-...
+OPENROUTER_MODEL=google/gemma-4-31b-it:free   # default; any OpenRouter model that supports tools
+```
+
+If `OPENROUTER_API_KEY` is set, every chat request goes to OpenRouter. If it's empty or missing, the
+app uses local Ollama as before. The status pill shows which provider is active. The calculator tools
+are still MCP tools running on your machine; only the chat messages and tool results go to OpenRouter.
+Requests are non-streaming, and the model's `reasoning_details` are passed back unmodified between tool rounds.
+
 Production mode:
 
 ```powershell
@@ -118,7 +150,7 @@ npm start                          # http://127.0.0.1:3000
 
 ## Configuration (`.env.local`, server-side only)
 
-See `.env.example`. None of these are `NEXT_PUBLIC_`, so none of them reach the browser. The app has no secrets.
+See `.env.example`. None of these are `NEXT_PUBLIC_`, so none of them reach the browser. The only secret is the optional `OPENROUTER_API_KEY`; keep it in `.env.local` (git-ignored).
 
 | Variable | Default | |
 |---|---|---|
@@ -127,6 +159,11 @@ See `.env.example`. None of these are `NEXT_PUBLIC_`, so none of them reach the 
 | `OLLAMA_TIMEOUT_MS` | `180000` | Per model call; the first call may need time to load the model |
 | `OLLAMA_THINK` | `false` | qwen3 thinking mode (slower; reasoning is never shown) |
 | `OLLAMA_KEEP_ALIVE` | `10m` | |
+| `OPENROUTER_API_KEY` | *(empty)* | **Secret.** When set, OpenRouter is used instead of Ollama |
+| `OPENROUTER_MODEL` | `google/gemma-4-31b-it:free` | Must support tool calling |
+| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | |
+| `OPENROUTER_TIMEOUT_MS` | `120000` | Per model call |
+| `OPENROUTER_REASONING` | `true` | Sends `reasoning: { enabled: true }` |
 | `MAX_TOOL_ITERATIONS` | `5` | Model rounds per request (1–10) |
 | `MAX_TOOL_CALLS_PER_TURN` | `4` | |
 | `MCP_TOOL_TIMEOUT_MS` / `MCP_CONNECT_TIMEOUT_MS` | `10000` / `30000` | |
@@ -159,12 +196,14 @@ See `.env.example`. None of these are `NEXT_PUBLIC_`, so none of them reach the 
 - Limits: 500 characters, 250 tokens, nesting depth 32, \|exponent\| ≤ 10000.
 - `%` in expressions is modulo, truncated so the sign follows the dividend (`-7 % 3 = -1`). Use the `percentage` tool or natural language ("15% of 800") for percentages.
 - `-2^2 = -4` (power binds tighter than unary minus) and `2^3^2 = 512` (right-associative).
-- No implicit multiplication (`2(3)` is rejected), no thousands separators, no complex numbers.
+- No implicit multiplication (`2(3)` and `2pi` are rejected; write `2*pi`), no thousands separators, no complex numbers.
+- `-3! = -6` and `2^3! = 64` (factorial binds tightest). Factorial needs a whole number ≤ 170.
+- Trig results within 1e-30 of zero are snapped to 0 (`sin(pi) = 0`). Angles are limited to |x| ≤ 1e15.
 
 ## Tests
 
 ```powershell
-npm test               # 115 tests: parser, tool handlers, agent loop, Ollama client, validation, real MCP (in-memory + stdio)
+npm test               # 196 tests: parser, tool handlers, agent loop, Ollama client, validation, real MCP (in-memory + stdio)
 npm run test:ollama    # 6 tests against REAL Ollama/qwen3:8b + real MCP stdio server (~100 s)
 ```
 
@@ -178,7 +217,7 @@ npm run mcp:inspect
 ```
 
 This downloads and runs `@modelcontextprotocol/inspector` (it needs internet access the first time) and
-opens a browser UI. Click **Connect**, then **Tools → List Tools** to see the 8 tools and their schemas.
+opens a browser UI. Click **Connect**, then **Tools → List Tools** to see the 11 tools and their schemas.
 Pick `percentage`, enter `value=800, percent=15`, and click **Run Tool**: the result is `15% of 800 = 120`
 with `structuredContent`. Try `divide` with `b=0` to see the `isError` result.
 
@@ -212,6 +251,8 @@ Runtime dependencies audit clean (`npm audit --omit=dev`).
 | Symptom | Fix |
 |---|---|
 | Status pill "Ollama offline" / "Cannot reach Ollama" | Start the Ollama app or run `ollama serve`. Check `Invoke-RestMethod http://127.0.0.1:11434/api/version`. |
+| "OpenRouter unreachable or key rejected" | Check `OPENROUTER_API_KEY` and your internet connection. Remove the key to go back to Ollama. |
+| OpenRouter "rate limit reached" (429) | Free models have tight per-minute and daily limits. Wait, or use a paid model. |
 | "qwen3:8b not installed" | `ollama pull qwen3:8b`, or set `OLLAMA_MODEL` |
 | First answer is slow or times out | The model is loading into memory (can take 30–60 s or more). Retry, or raise `OLLAMA_TIMEOUT_MS`. |
 | "does not support tool calling" | Use a tool-capable model (qwen3, llama3.1+, …). The fallback still computes plain expressions. |

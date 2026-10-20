@@ -4,20 +4,29 @@
  * as a second validation layer and as the allowlist of tools the model may call.
  */
 import { z } from "zod";
-import { MAX_EXPRESSION_LENGTH } from "./expression";
+import { FUNCTION_ARITY, MAX_EXPRESSION_LENGTH } from "./expression";
+import { HYPERBOLIC_FUNCTIONS, TRIG_FUNCTIONS } from "./scientific";
 import {
   add,
   calculateExpression,
   divide,
+  factorial,
+  logarithm,
   multiply,
   percentage,
   power,
   squareRoot,
   subtract,
+  trigonometry,
   type CalculationResult,
 } from "./operations";
 
 const num = (description: string) => z.number().describe(description);
+
+const angleUnit = z
+  .enum(["degrees", "radians"])
+  .optional()
+  .describe('Unit for trigonometric angles: "degrees" (default) or "radians". Use radians when the input uses pi.');
 
 export const calculationOutputShape = {
   operation: z.string().describe("Name of the operation that was performed"),
@@ -41,16 +50,20 @@ export const calculatorTools = {
   calculate_expression: defineTool({
     title: "Calculate expression",
     description:
-      "Safely evaluate an arithmetic expression. Supports numbers (decimals and 1e5 notation), + - * / % (modulo) ^ (power), " +
-      "parentheses, unary minus and sqrt(x). Use this for any multi-step calculation, e.g. \"(100 + 50) * 4\".",
+      "Safely evaluate an arithmetic or scientific expression. Supports numbers (decimals and 1e5 notation), " +
+      "+ - * / % (modulo) ^ (power), ! (factorial), parentheses, unary minus, the constants pi and e, and the functions " +
+      `${Object.keys(FUNCTION_ARITY).join(", ")}. log(x) is base 10, log(x, b) is base b, ln is natural log, ` +
+      "root(x, n) is the n-th root, nCr/nPr are combinations/permutations. Functions need parentheses and there is no " +
+      "implicit multiplication (write 2*pi, not 2pi). Use this for any multi-step calculation, e.g. \"(100 + 50) * 4\".",
     inputSchema: {
       expression: z
         .string()
         .min(1)
         .max(MAX_EXPRESSION_LENGTH)
-        .describe("Arithmetic expression, e.g. \"(100 + 50) * 4\" or \"2^10 - sqrt(144)\""),
+        .describe("Expression, e.g. \"(100 + 50) * 4\", \"sin(30)^2 + cos(30)^2\" or \"log(8, 2) + 5!\""),
+      angle_unit: angleUnit,
     },
-    handler: ({ expression }) => calculateExpression(expression),
+    handler: ({ expression, angle_unit }) => calculateExpression(expression, angle_unit ?? "degrees"),
   }),
   add: defineTool({
     title: "Add",
@@ -93,6 +106,37 @@ export const calculatorTools = {
     description: "Square root of a non-negative number. Negative inputs are rejected (complex numbers are not supported).",
     inputSchema: { value: num("A non-negative number") },
     handler: ({ value }) => squareRoot(value),
+  }),
+  trigonometry: defineTool({
+    title: "Trigonometry",
+    description:
+      "Trigonometric (sin, cos, tan, asin, acos, atan) and hyperbolic (sinh, cosh, tanh, asinh, acosh, atanh) functions " +
+      "of one plain number. angle_unit applies to sin/cos/tan inputs and asin/acos/atan outputs; it is ignored for hyperbolic " +
+      "functions. For pi, e or combined expressions (e.g. sin(pi/6) + 1) use calculate_expression instead.",
+    inputSchema: {
+      function: z.enum([...TRIG_FUNCTIONS, ...HYPERBOLIC_FUNCTIONS]).describe("The function to apply"),
+      value: num("The angle (sin/cos/tan) or the input value"),
+      angle_unit: angleUnit,
+    },
+    handler: (args) => trigonometry(args.function, args.value, args.angle_unit ?? "degrees"),
+  }),
+  logarithm: defineTool({
+    title: "Logarithm",
+    description: 'Logarithm of a positive number. base defaults to 10; use base "e" for the natural logarithm (ln).',
+    inputSchema: {
+      value: num("A positive number"),
+      base: z
+        .union([z.number(), z.literal("e")])
+        .optional()
+        .describe('The base: a positive number other than 1, or "e" for the natural log. Default 10.'),
+    },
+    handler: ({ value, base }) => logarithm(value, base ?? 10),
+  }),
+  factorial: defineTool({
+    title: "Factorial",
+    description: "n! for a whole number 0 ≤ n ≤ 170 (larger results exceed the ±1e300 limit).",
+    inputSchema: { n: num("A non-negative whole number") },
+    handler: ({ n }) => factorial(n),
   }),
 } as const;
 

@@ -2,7 +2,7 @@ import { ChatRequestSchema, MAX_REQUEST_BYTES, type ChatEvent } from "@/lib/chat
 import { runAgent } from "@/lib/server/agent";
 import { getConfig } from "@/lib/server/config";
 import { getCalculatorMcp } from "@/lib/server/mcp-client";
-import { createOllamaChatModel } from "@/lib/server/ollama";
+import { createChatModel } from "@/lib/server/model-provider";
 import { checkRequestOrigin, createConcurrencyLimiter } from "@/lib/server/request-guard";
 
 export const runtime = "nodejs";
@@ -76,13 +76,7 @@ export async function POST(request: Request): Promise<Response> {
   const abort = new AbortController();
   request.signal.addEventListener("abort", () => abort.abort(), { once: true });
 
-  const model = createOllamaChatModel({
-    host: config.OLLAMA_HOST,
-    model: config.OLLAMA_MODEL,
-    timeoutMs: config.OLLAMA_TIMEOUT_MS,
-    think: config.OLLAMA_THINK,
-    keepAlive: config.OLLAMA_KEEP_ALIVE,
-  });
+  const model = createChatModel(config);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({

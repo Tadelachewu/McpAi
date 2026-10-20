@@ -30,6 +30,10 @@ Rules:
 - Never calculate anything yourself. Every number in your answer that results from a calculation must come from a tool result.
 - Prefer calculate_expression for multi-step or parenthesized expressions, e.g. "(100 + 50) * 4".
 - Use percentage for "X% of Y" (value=Y, percent=X), square_root for square roots, and the other tools for single operations.
+- Scientific math on ONE plain number: trigonometry (sin, cos, tan, asin, acos, atan, sinh, …), logarithm (base "e" for ln), factorial. Their arguments must be plain numbers, never text like "pi/6".
+- Anything else scientific — several operations, pi or e, nested functions — goes to calculate_expression as ONE expression, e.g. "sin(pi/6) + log(100)". It supports pi, e, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, ln, log(x) (base 10), log(x, base), log2, exp, sqrt, cbrt, root(x, n), abs, floor, ceil, round, n! and nCr(n, r) / nPr(n, r).
+- Counting questions: "choose r from n" / combinations → calculate_expression "nCr(n, r)"; arrangements / permutations → "nPr(n, r)".
+- Angles: pass angle_unit "degrees" unless the user says radians or the angle is written with pi (e.g. sin(pi/6)); then pass "radians".
 - If a tool returns an error (for example division by zero), explain the error plainly; do not invent a result.
 - After receiving tool results, reply with a short, clear answer that shows the calculation, e.g. "15% of 800 = 120".
 - If the user asks something that is not a calculation, briefly say you can only help with calculations.`;
@@ -40,7 +44,10 @@ const NUDGE_MESSAGE =
 const NUMERIC_STRING = /^\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?\s*$/i;
 
 export function looksLikeCalculation(text: string): boolean {
-  return /\d/.test(text) || /\b(sqrt|square root|percent|plus|minus|times|divided|power)\b/i.test(text);
+  return (
+    /\d/.test(text) ||
+    /\b(sqrt|square root|cube root|percent|plus|minus|times|divided|power|sin|cos|tan|sine|cosine|tangent|log|ln|logarithm|factorial|exp|pi|choose|combinations?|permutations?)\b/i.test(text)
+  );
 }
 
 /** Converts MCP JSON Schema to the parameter schema Ollama expects (drops meta keys). */
@@ -219,7 +226,14 @@ export async function runAgent(history: ChatMessageInput[], options: AgentOption
         if (toolsExecuted === 0 && !nudged && looksLikeCalculation(lastUser) && iteration + 1 < options.maxIterations) {
           nudged = true;
           if (streamed) emit({ type: "discard_draft" });
-          messages.push({ role: "assistant", content: turn.content }, { role: "user", content: NUDGE_MESSAGE });
+          messages.push(
+            {
+              role: "assistant",
+              content: turn.content,
+              ...(turn.reasoningDetails !== undefined ? { reasoning_details: turn.reasoningDetails } : {}),
+            },
+            { role: "user", content: NUDGE_MESSAGE },
+          );
           continue;
         }
         emit({
@@ -232,7 +246,12 @@ export async function runAgent(history: ChatMessageInput[], options: AgentOption
       }
 
       if (streamed) emit({ type: "discard_draft" });
-      messages.push({ role: "assistant", content: turn.content, tool_calls: turn.toolCalls });
+      messages.push({
+        role: "assistant",
+        content: turn.content,
+        tool_calls: turn.toolCalls,
+        ...(turn.reasoningDetails !== undefined ? { reasoning_details: turn.reasoningDetails } : {}),
+      });
 
       for (const [index, call] of turn.toolCalls.entries()) {
         const id = (typeof call?.id === "string" && call.id.slice(0, 64)) || `call_${iteration}_${index}`;

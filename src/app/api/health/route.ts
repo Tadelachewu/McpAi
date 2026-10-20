@@ -1,24 +1,29 @@
-import { getConfig } from "@/lib/server/config";
+import { getAiProvider, getConfig, type AiProvider } from "@/lib/server/config";
 import { getCalculatorMcp } from "@/lib/server/mcp-client";
 import { checkOllama } from "@/lib/server/ollama";
+import { checkOpenRouter } from "@/lib/server/openrouter";
 import { checkRequestOrigin } from "@/lib/server/request-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export interface HealthResponse {
-  ollama: { reachable: boolean; modelAvailable: boolean; model: string; version?: string };
+  ai: { provider: AiProvider; reachable: boolean; modelAvailable: boolean; model: string; version?: string };
   mcp: { connected: boolean; tools: string[]; error?: string };
 }
 
-/** Reports whether Ollama, the model and the MCP server are usable. Exposes no secrets or URLs. */
+/** Reports whether the AI provider, the model and the MCP server are usable. Exposes no secrets or URLs. */
 export async function GET(request: Request): Promise<Response> {
   const config = getConfig();
   const guard = checkRequestOrigin(request.headers, config.ALLOW_NON_LOCAL_REQUESTS);
   if (!guard.ok) return Response.json({ error: guard.message }, { status: guard.status });
 
-  const [ollama, mcp] = await Promise.all([
-    checkOllama(config.OLLAMA_HOST, config.OLLAMA_MODEL),
+  const provider = getAiProvider(config);
+  const model = provider === "openrouter" ? config.OPENROUTER_MODEL : config.OLLAMA_MODEL;
+  const [ai, mcp] = await Promise.all([
+    provider === "openrouter"
+      ? checkOpenRouter(config.OPENROUTER_BASE_URL, config.OPENROUTER_API_KEY!.trim(), model)
+      : checkOllama(config.OLLAMA_HOST, model),
     getCalculatorMcp(config.MCP_CONNECT_TIMEOUT_MS)
       .then(async (client) => ({ connected: true, tools: (await client.listTools()).map((t) => t.name) }))
       .catch((error: unknown) => ({
@@ -28,6 +33,6 @@ export async function GET(request: Request): Promise<Response> {
       })),
   ]);
 
-  const body: HealthResponse = { ollama: { ...ollama, model: config.OLLAMA_MODEL }, mcp };
+  const body: HealthResponse = { ai: { ...ai, provider, model }, mcp };
   return Response.json(body, { headers: { "Cache-Control": "no-store" } });
 }

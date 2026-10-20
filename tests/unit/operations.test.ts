@@ -42,7 +42,7 @@ describe("tool handlers (operations)", () => {
 describe("tool registry & schemas", () => {
   it("exposes exactly the documented tools", () => {
     expect(Object.keys(calculatorTools).sort()).toEqual(
-      ["add", "calculate_expression", "divide", "multiply", "percentage", "power", "square_root", "subtract"].sort(),
+      ["add", "calculate_expression", "divide", "factorial", "logarithm", "multiply", "percentage", "power", "square_root", "subtract", "trigonometry"].sort(),
     );
     expect(isCalculatorToolName("add")).toBe(true);
     expect(isCalculatorToolName("toString")).toBe(false);

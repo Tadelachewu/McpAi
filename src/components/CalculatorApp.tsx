@@ -34,7 +34,13 @@ export function CalculatorApp() {
     };
   }, []);
 
-  const ollamaOk = health ? health.ollama.reachable && health.ollama.modelAvailable : healthError ? false : null;
+  const aiOk = health ? health.ai.reachable && health.ai.modelAvailable : healthError ? false : null;
+  const providerName = health?.ai.provider === "openrouter" ? "OpenRouter" : "Ollama";
+  const subtitle = health
+    ? health.ai.provider === "openrouter"
+      ? `${health.ai.model} via OpenRouter`
+      : `Local ${health.ai.model} via Ollama`
+    : "AI assistant";
   const mcpOk = health ? health.mcp.connected : healthError ? false : null;
 
   return (
@@ -42,23 +48,27 @@ export function CalculatorApp() {
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">AI Calculator</h1>
-          <p className="mt-1 text-sm text-slate-400">Local qwen3:8b via Ollama · calculations executed by MCP tools</p>
+          <p className="mt-1 text-sm text-slate-400">{subtitle} · calculations executed by MCP tools</p>
         </div>
         <div className="flex flex-wrap gap-2" aria-label="Service status">
           <StatusPill
-            ok={ollamaOk}
+            ok={aiOk}
             label={
               health
-                ? !health.ollama.reachable
-                  ? "Ollama offline"
-                  : health.ollama.modelAvailable
-                    ? `Ollama · ${health.ollama.model}`
-                    : `${health.ollama.model} not installed`
+                ? !health.ai.reachable
+                  ? health.ai.provider === "openrouter"
+                    ? "OpenRouter unreachable or key rejected"
+                    : "Ollama offline"
+                  : health.ai.modelAvailable
+                    ? `${providerName} · ${health.ai.model}`
+                    : health.ai.provider === "openrouter"
+                      ? `${health.ai.model} not found or no tool support`
+                      : `${health.ai.model} not installed`
                 : healthError
                   ? "Status unavailable"
-                  : "Checking Ollama…"
+                  : "Checking AI model…"
             }
-            title={health?.ollama.version ? `Ollama ${health.ollama.version}` : undefined}
+            title={health?.ai.version ? `Ollama ${health.ai.version}` : undefined}
           />
           <StatusPill
             ok={mcpOk}
