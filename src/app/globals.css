@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+@theme {
+  /* System fonts only: the app builds and runs fully offline. */
+  --font-sans: "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", ui-monospace, Consolas, SFMono-Regular, Menlo, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background: radial-gradient(1200px 600px at 10% -10%, #1e293b 0%, transparent 60%),
+    radial-gradient(900px 500px at 110% 10%, #172554 0%, transparent 55%), #0b1120;
+  min-height: 100dvh;
+}
+
+/* Consistent, highly visible keyboard focus everywhere. */
+:where(button, a, textarea, input, [tabindex]):focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
