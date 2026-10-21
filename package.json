@@ -11,6 +11,7 @@
     "dev": "next dev -H 127.0.0.1 -p 3000",
     "build": "next build",
     "start": "next start -H 127.0.0.1 -p 3000",
+    "start:render": "next start -H 0.0.0.0",
     "mcp:server": "tsx mcp-server/index.ts",
     "mcp:inspect": "npx -y @modelcontextprotocol/inspector node node_modules/tsx/dist/cli.mjs mcp-server/index.ts",
     "typecheck": "tsc --noEmit",
